@@ -106,9 +106,43 @@ export interface Recepcion {
   diferencia_no_justificada_g: number;
   es_recepcion_final: number;
   requiere_reproceso: number;
+  total_pago_centavos: number;
   responsable_recepcion: string;
   observaciones: string;
   creado_en: string;
+  actualizado_en: string;
+}
+
+export interface RetiroEmpresa {
+  id: number;
+  numero: string;
+  empresa_id: number;
+  empresa_nombre?: string;
+  empresa_codigo?: string;
+  tipo_servicio: Servicio;
+  fecha_retiro: string;
+  hora_retiro: string;
+  persona_entrega: string;
+  persona_recoge: string;
+  lugar_retiro: string;
+  transporte: string;
+  peso_bruto_g: number;
+  peso_envases_g: number;
+  peso_neto_g: number;
+  cantidad_bolsas: number;
+  estado: string;
+  observaciones: string;
+  creado_en: string;
+  actualizado_en: string;
+}
+
+export interface PrecioCategoria {
+  id: number;
+  tipo_servicio: Servicio;
+  categoria: string;
+  nombre: string;
+  precio_centavos: number;
+  activa: number;
   actualizado_en: string;
 }
 

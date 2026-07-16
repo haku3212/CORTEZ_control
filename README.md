@@ -47,6 +47,14 @@ La pantalla Respaldos muestra la ruta exacta en cada instalacion.
 
 En Respaldos se puede crear una copia manual, listar archivos existentes y restaurar un respaldo. Antes de restaurar se genera una copia automatica en la carpeta `antes-de-restaurar`. Al cerrar la aplicacion se crea un respaldo automatico si hubo cambios.
 
+## Flujo operativo actualizado
+
+- Retiros registra lo que se recoge o saca de cada empresa: empresa, servicio destino, persona que entrega, persona que recoge, transporte, bolsas y pesos.
+- Quebrado puede controlarse como trabajo interno, porque la empresa usa su propia maquina y personal.
+- Recorte se controla por entregas a trabajadoras externas: peso entregado, devoluciones parciales/finales, diferencias y tiempos.
+- Precios permite editar cuanto se paga por kilogramo clasificado: almendra buena, podrida, amarilla, descarte, residuos y categorias propias de quebrado o recorte.
+- Cada recepcion calcula el pago total con los precios vigentes al momento de registrar la devolucion.
+
 ## Estructura
 
 ```text

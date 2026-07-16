@@ -21,7 +21,9 @@ import type {
   EstadoLote,
   Lote,
   LoteResumen,
+  PrecioCategoria,
   Recepcion,
+  RetiroEmpresa,
   Servicio,
   Trabajadora,
   TrabajadoraResumen
@@ -173,6 +175,7 @@ function migrate(): void {
       diferencia_no_justificada_g INTEGER NOT NULL DEFAULT 0,
       es_recepcion_final INTEGER NOT NULL DEFAULT 0,
       requiere_reproceso INTEGER NOT NULL DEFAULT 0,
+      total_pago_centavos INTEGER NOT NULL DEFAULT 0,
       responsable_recepcion TEXT NOT NULL,
       observaciones TEXT NOT NULL DEFAULT '',
       creado_en TEXT NOT NULL,
@@ -192,10 +195,41 @@ function migrate(): void {
       clave TEXT PRIMARY KEY,
       valor TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS retiros_empresas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      numero TEXT NOT NULL UNIQUE,
+      empresa_id INTEGER NOT NULL REFERENCES empresas(id),
+      tipo_servicio TEXT NOT NULL CHECK(tipo_servicio IN ('QUEBRADO','RECORTE')),
+      fecha_retiro TEXT NOT NULL,
+      hora_retiro TEXT NOT NULL,
+      persona_entrega TEXT NOT NULL,
+      persona_recoge TEXT NOT NULL,
+      lugar_retiro TEXT NOT NULL DEFAULT '',
+      transporte TEXT NOT NULL DEFAULT '',
+      peso_bruto_g INTEGER NOT NULL,
+      peso_envases_g INTEGER NOT NULL,
+      peso_neto_g INTEGER NOT NULL,
+      cantidad_bolsas INTEGER NOT NULL DEFAULT 0,
+      estado TEXT NOT NULL DEFAULT 'RETIRADO',
+      observaciones TEXT NOT NULL DEFAULT '',
+      creado_en TEXT NOT NULL,
+      actualizado_en TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS precios_categoria (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tipo_servicio TEXT NOT NULL CHECK(tipo_servicio IN ('QUEBRADO','RECORTE')),
+      categoria TEXT NOT NULL,
+      nombre TEXT NOT NULL,
+      precio_centavos INTEGER NOT NULL DEFAULT 0,
+      activa INTEGER NOT NULL DEFAULT 1,
+      actualizado_en TEXT NOT NULL,
+      UNIQUE(tipo_servicio, categoria)
+    );
     CREATE INDEX IF NOT EXISTS idx_entregas_lote ON entregas(lote_id);
     CREATE INDEX IF NOT EXISTS idx_recepciones_entrega ON recepciones(entrega_id);
   `;
   database().exec(sql);
+  ensureColumn('recepciones', 'total_pago_centavos', 'INTEGER NOT NULL DEFAULT 0');
 }
 
 function seedInitialData(): void {
@@ -222,6 +256,43 @@ function seedInitialData(): void {
   const insert = database().prepare('INSERT OR IGNORE INTO configuracion (clave, valor) VALUES (?, ?)');
   Object.entries(defaults).forEach(([key, value]) => insert.run(key, String(value)));
   fs.mkdirSync(defaults.carpeta_respaldos, { recursive: true });
+  seedPreciosCategoria();
+}
+
+function ensureColumn(table: string, column: string, definition: string): void {
+  const columns = database().prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!columns.some((item) => item.name === column)) {
+    database().exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+function seedPreciosCategoria(): void {
+  const defaults: Array<Pick<PrecioCategoria, 'tipo_servicio' | 'categoria' | 'nombre' | 'precio_centavos'>> = [
+    { tipo_servicio: 'QUEBRADO', categoria: 'producto_bueno_g', nombre: 'Almendra buena', precio_centavos: 300 },
+    { tipo_servicio: 'QUEBRADO', categoria: 'producto_danado_g', nombre: 'Almendra dañada o quebrada', precio_centavos: 100 },
+    { tipo_servicio: 'QUEBRADO', categoria: 'producto_podrido_g', nombre: 'Almendra podrida', precio_centavos: 50 },
+    { tipo_servicio: 'QUEBRADO', categoria: 'producto_amarillo_g', nombre: 'Almendra amarilla', precio_centavos: 80 },
+    { tipo_servicio: 'QUEBRADO', categoria: 'producto_con_cascara_g', nombre: 'Almendra con cascara', precio_centavos: 0 },
+    { tipo_servicio: 'QUEBRADO', categoria: 'cascara_g', nombre: 'Cascara', precio_centavos: 0 },
+    { tipo_servicio: 'QUEBRADO', categoria: 'descarte_g', nombre: 'Descarte', precio_centavos: 0 },
+    { tipo_servicio: 'QUEBRADO', categoria: 'residuos_g', nombre: 'Residuos', precio_centavos: 0 },
+    { tipo_servicio: 'QUEBRADO', categoria: 'otros_g', nombre: 'Otros', precio_centavos: 0 },
+    { tipo_servicio: 'RECORTE', categoria: 'producto_bueno_g', nombre: 'Almendra recortada buena', precio_centavos: 300 },
+    { tipo_servicio: 'RECORTE', categoria: 'producto_danado_g', nombre: 'Almendra quebrada en recorte', precio_centavos: 100 },
+    { tipo_servicio: 'RECORTE', categoria: 'producto_podrido_g', nombre: 'Almendra podrida retirada', precio_centavos: 50 },
+    { tipo_servicio: 'RECORTE', categoria: 'producto_amarillo_g', nombre: 'Almendra amarilla retirada', precio_centavos: 80 },
+    { tipo_servicio: 'RECORTE', categoria: 'producto_quemado_g', nombre: 'Almendra quemada', precio_centavos: 50 },
+    { tipo_servicio: 'RECORTE', categoria: 'producto_manchado_g', nombre: 'Almendra manchada', precio_centavos: 50 },
+    { tipo_servicio: 'RECORTE', categoria: 'recorte_incompleto_g', nombre: 'Recorte incompleto', precio_centavos: 0 },
+    { tipo_servicio: 'RECORTE', categoria: 'descarte_g', nombre: 'Descarte', precio_centavos: 0 },
+    { tipo_servicio: 'RECORTE', categoria: 'residuos_g', nombre: 'Residuos de recorte', precio_centavos: 0 },
+    { tipo_servicio: 'RECORTE', categoria: 'otros_g', nombre: 'Otros', precio_centavos: 0 }
+  ];
+  const stmt = database().prepare(`
+    INSERT OR IGNORE INTO precios_categoria (tipo_servicio, categoria, nombre, precio_centavos, activa, actualizado_en)
+    VALUES (@tipo_servicio, @categoria, @nombre, @precio_centavos, 1, @fecha)
+  `);
+  defaults.forEach((item) => stmt.run({ ...item, fecha: now() }));
 }
 
 function history(modulo: string, accion: string, registroId: number, descripcion: string, before?: unknown, after?: unknown): void {
@@ -393,6 +464,73 @@ export function listLotes(): Lote[] {
     FROM lotes l JOIN empresas e ON e.id = l.empresa_id
     ORDER BY l.fecha_recepcion DESC, l.id DESC
   `).all() as Lote[];
+}
+
+export function listRetirosEmpresa(): RetiroEmpresa[] {
+  return database().prepare(`
+    SELECT r.*, e.nombre AS empresa_nombre, e.codigo AS empresa_codigo
+    FROM retiros_empresas r
+    JOIN empresas e ON e.id = r.empresa_id
+    ORDER BY r.fecha_retiro DESC, r.id DESC
+  `).all() as RetiroEmpresa[];
+}
+
+export function createRetiroEmpresa(input: Row): RetiroEmpresa {
+  const tx = database().transaction(() => {
+    const empresa = getById<Empresa>('empresas', asNumber(input.empresa_id));
+    if (!empresa.activa) throw new Error('No se puede registrar un retiro de una empresa inactiva.');
+    const tipo = requireText(input.tipo_servicio, 'Tipo de servicio') as Servicio;
+    const gross = asNumber(input.peso_bruto_g);
+    const tare = asNumber(input.peso_envases_g);
+    const net = calculateNetWeight(gross, tare);
+    const max = database().prepare('SELECT COALESCE(MAX(id),0) AS max FROM retiros_empresas').get() as { max: number };
+    const numero = nextSequentialCode('RET-', max.max, 6);
+    const result = database().prepare(`
+      INSERT INTO retiros_empresas (numero,empresa_id,tipo_servicio,fecha_retiro,hora_retiro,persona_entrega,persona_recoge,lugar_retiro,transporte,peso_bruto_g,peso_envases_g,peso_neto_g,cantidad_bolsas,estado,observaciones,creado_en,actualizado_en)
+      VALUES (@numero,@empresa,@tipo,@fechaRetiro,@horaRetiro,@personaEntrega,@personaRecoge,@lugar,@transporte,@bruto,@envases,@neto,@bolsas,'RETIRADO',@observaciones,@fecha,@fecha)
+    `).run({
+      numero,
+      empresa: empresa.id,
+      tipo,
+      fechaRetiro: asString(input.fecha_retiro, today()),
+      horaRetiro: asString(input.hora_retiro, currentTime()),
+      personaEntrega: requireText(input.persona_entrega, 'Persona que entrega en la empresa'),
+      personaRecoge: requireText(input.persona_recoge, 'Persona que recoge'),
+      lugar: asString(input.lugar_retiro),
+      transporte: asString(input.transporte),
+      bruto: gross,
+      envases: tare,
+      neto: net,
+      bolsas: asNumber(input.cantidad_bolsas),
+      observaciones: asString(input.observaciones),
+      fecha: now()
+    });
+    const created = getById<RetiroEmpresa>('retiros_empresas', Number(result.lastInsertRowid));
+    history('Retiros', 'CREAR', created.id, `Retiro ${created.numero} registrado`, null, created);
+    touch();
+    return created;
+  });
+  return tx();
+}
+
+export function listPreciosCategoria(): PrecioCategoria[] {
+  return database().prepare('SELECT * FROM precios_categoria ORDER BY tipo_servicio, id').all() as PrecioCategoria[];
+}
+
+export function updatePrecioCategoria(input: Row): PrecioCategoria {
+  const id = asNumber(input.id);
+  const before = getById<PrecioCategoria>('precios_categoria', id);
+  database().prepare('UPDATE precios_categoria SET nombre=?, precio_centavos=?, activa=?, actualizado_en=? WHERE id=?')
+    .run(requireText(input.nombre, 'Nombre'), asNumber(input.precio_centavos), input.activa ? 1 : 0, now(), id);
+  const updated = getById<PrecioCategoria>('precios_categoria', id);
+  history('Precios', 'EDITAR', id, `Precio ${updated.nombre} actualizado`, before, updated);
+  touch();
+  return updated;
+}
+
+function calculatePagoRecepcion(tipo: Servicio, values: Record<string, number>): number {
+  const prices = database().prepare('SELECT categoria, precio_centavos FROM precios_categoria WHERE tipo_servicio=? AND activa=1').all(tipo) as Array<{ categoria: string; precio_centavos: number }>;
+  return prices.reduce((sum, price) => sum + Math.round((values[price.categoria] || 0) * price.precio_centavos / 1000), 0);
 }
 
 export function createLote(input: Row): Lote {
@@ -571,9 +709,10 @@ export function createRecepcion(input: Row): Recepcion {
     }
     const max = database().prepare('SELECT COALESCE(MAX(id),0) AS max FROM recepciones').get() as { max: number };
     const numero = nextSequentialCode('REC-', max.max, 6);
+    const totalPago = calculatePagoRecepcion(String(detail.tipo_servicio) as Servicio, values);
     const result = database().prepare(`
-      INSERT INTO recepciones (numero,entrega_id,fecha_recepcion,hora_recepcion,peso_procesado_g,producto_bueno_g,producto_danado_g,producto_podrido_g,producto_amarillo_g,producto_con_cascara_g,cascara_g,producto_quemado_g,producto_manchado_g,recorte_incompleto_g,descarte_g,residuos_g,otros_g,diferencia_no_justificada_g,es_recepcion_final,requiere_reproceso,responsable_recepcion,observaciones,creado_en,actualizado_en)
-      VALUES (@numero,@entrega,@fechaRecepcion,@horaRecepcion,@procesado,@producto_bueno_g,@producto_danado_g,@producto_podrido_g,@producto_amarillo_g,@producto_con_cascara_g,@cascara_g,@producto_quemado_g,@producto_manchado_g,@recorte_incompleto_g,@descarte_g,@residuos_g,@otros_g,@diferencia,@final,@reproceso,@responsable,@observaciones,@fecha,@fecha)
+      INSERT INTO recepciones (numero,entrega_id,fecha_recepcion,hora_recepcion,peso_procesado_g,producto_bueno_g,producto_danado_g,producto_podrido_g,producto_amarillo_g,producto_con_cascara_g,cascara_g,producto_quemado_g,producto_manchado_g,recorte_incompleto_g,descarte_g,residuos_g,otros_g,diferencia_no_justificada_g,es_recepcion_final,requiere_reproceso,total_pago_centavos,responsable_recepcion,observaciones,creado_en,actualizado_en)
+      VALUES (@numero,@entrega,@fechaRecepcion,@horaRecepcion,@procesado,@producto_bueno_g,@producto_danado_g,@producto_podrido_g,@producto_amarillo_g,@producto_con_cascara_g,@cascara_g,@producto_quemado_g,@producto_manchado_g,@recorte_incompleto_g,@descarte_g,@residuos_g,@otros_g,@diferencia,@final,@reproceso,@totalPago,@responsable,@observaciones,@fecha,@fecha)
     `).run({
       numero,
       entrega: entrega.id,
@@ -584,6 +723,7 @@ export function createRecepcion(input: Row): Recepcion {
       diferencia: difference,
       final: final ? 1 : 0,
       reproceso: input.requiere_reproceso ? 1 : 0,
+      totalPago,
       responsable: requireText(input.responsable_recepcion, 'Responsable de recepcion'),
       observaciones: asString(input.observaciones),
       fecha: now()

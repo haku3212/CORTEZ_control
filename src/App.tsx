@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArchiveRestore, BarChart3, BriefcaseBusiness, Check, ClipboardList, Factory, Gauge, History, Home, PackageCheck, Settings, Users } from 'lucide-react';
+import { ArchiveRestore, BarChart3, BriefcaseBusiness, Check, ClipboardList, Factory, Gauge, History, Home, PackageCheck, Settings, Truck, BadgeCent, Users } from 'lucide-react';
 import { bsToCents, centsToBs, gramsToKg, kgToGrams } from '../shared/calculations';
-import type { Configuracion, DashboardData, Empresa, Entrega, Lote, LoteResumen, Recepcion, Servicio, Trabajadora, TrabajadoraResumen } from '../shared/types';
+import type { Configuracion, DashboardData, Empresa, Entrega, Lote, LoteResumen, PrecioCategoria, Recepcion, RetiroEmpresa, Servicio, Trabajadora, TrabajadoraResumen } from '../shared/types';
 
-type View = 'inicio' | 'empresas' | 'trabajadoras' | 'lotes' | 'entregas' | 'recepciones' | 'rendimiento' | 'respaldos' | 'configuracion' | 'historial';
+type View = 'inicio' | 'empresas' | 'retiros' | 'trabajadoras' | 'lotes' | 'entregas' | 'recepciones' | 'rendimiento' | 'precios' | 'respaldos' | 'configuracion' | 'historial';
 type Notice = { type: 'ok' | 'error'; text: string } | null;
 type Form = Record<string, string | number | boolean>;
 type ConfirmDialog = { text: string; action: () => Promise<void> } | null;
@@ -34,11 +34,13 @@ async function api<T>(channel: string, payload?: unknown): Promise<T> {
 const menu: Array<{ id: View; label: string; icon: typeof Home }> = [
   { id: 'inicio', label: 'Inicio', icon: Home },
   { id: 'empresas', label: 'Empresas', icon: Factory },
+  { id: 'retiros', label: 'Retiros', icon: Truck },
   { id: 'trabajadoras', label: 'Trabajadoras', icon: Users },
   { id: 'lotes', label: 'Lotes', icon: BriefcaseBusiness },
   { id: 'entregas', label: 'Entregas', icon: ClipboardList },
   { id: 'recepciones', label: 'Recepciones', icon: PackageCheck },
   { id: 'rendimiento', label: 'Rendimiento', icon: BarChart3 },
+  { id: 'precios', label: 'Precios', icon: BadgeCent },
   { id: 'respaldos', label: 'Respaldos', icon: ArchiveRestore },
   { id: 'configuracion', label: 'Configuracion', icon: Settings },
   { id: 'historial', label: 'Historial', icon: History }
@@ -51,11 +53,13 @@ export default function App() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [trabajadoras, setTrabajadoras] = useState<Trabajadora[]>([]);
+  const [retiros, setRetiros] = useState<RetiroEmpresa[]>([]);
   const [lotes, setLotes] = useState<Lote[]>([]);
   const [entregas, setEntregas] = useState<Entrega[]>([]);
   const [recepciones, setRecepciones] = useState<Recepcion[]>([]);
   const [rendimiento, setRendimiento] = useState<TrabajadoraResumen[]>([]);
   const [config, setConfig] = useState<Configuracion | null>(null);
+  const [precios, setPrecios] = useState<PrecioCategoria[]>([]);
   const [historial, setHistorial] = useState<Array<Record<string, unknown>>>([]);
   const [backups, setBackups] = useState<Array<Record<string, unknown>>>([]);
   const [backupInfo, setBackupInfo] = useState<Record<string, unknown>>({});
@@ -64,13 +68,16 @@ export default function App() {
   const [selectedEntrega, setSelectedEntrega] = useState<Record<string, unknown> | null>(null);
   const [editingEmpresa, setEditingEmpresa] = useState<Empresa | null>(null);
   const [editingTrabajadora, setEditingTrabajadora] = useState<Trabajadora | null>(null);
+  const [editingPrecio, setEditingPrecio] = useState<PrecioCategoria | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>(null);
 
   const [empresaForm, setEmpresaForm] = useState<Form>({ codigo: '', nombre: '', servicio_principal: 'QUEBRADO', precio_servicio: '0' });
+  const [retiroForm, setRetiroForm] = useState<Form>({ empresa_id: '', tipo_servicio: 'QUEBRADO', fecha_retiro: today, hora_retiro: timeNow, persona_entrega: '', persona_recoge: '', lugar_retiro: '', transporte: '', peso_bruto: '', peso_envases: '0', cantidad_bolsas: 0, observaciones: '' });
   const [trabForm, setTrabForm] = useState<Form>({ nombre_completo: '', tipo_trabajo: 'QUEBRADO', precio_quebrado: '0', precio_recorte: '0', fecha_ingreso: today });
   const [loteForm, setLoteForm] = useState<Form>({ empresa_id: '', tipo_servicio: 'QUEBRADO', fecha_recepcion: today, hora_recepcion: timeNow, persona_entrega: '', persona_recibe: '', peso_bruto: '', peso_envases: '0', cantidad_bolsas: 0, precio_servicio: '0', fecha_estimada_entrega: '' });
   const [entregaForm, setEntregaForm] = useState<Form>({ lote_id: '', trabajadora_id: '', fecha_entrega: today, hora_entrega: timeNow, peso_bruto: '', peso_envase: '0', cantidad_bolsas: 0, fecha_limite: today, hora_limite: '18:00', precio_trabajadora: '0', responsable_entrega: '' });
   const [recepcionForm, setRecepcionForm] = useState<Form>({ entrega_id: '', fecha_recepcion: today, hora_recepcion: timeNow, producto_bueno: '', producto_danado: '0', producto_podrido: '0', producto_amarillo: '0', producto_con_cascara: '0', cascara: '0', producto_quemado: '0', producto_manchado: '0', recorte_incompleto: '0', descarte: '0', residuos: '0', otros: '0', es_recepcion_final: false, requiere_reproceso: false, confirmar_exceso: false, responsable_recepcion: '', observaciones: '' });
+  const [precioForm, setPrecioForm] = useState<Form>({ nombre: '', precio: '0', activa: true });
 
   const selectedLoteForEntrega = lotes.find((l) => l.id === Number(entregaForm.lote_id));
   const compatibleTrabajadoras = useMemo(() => {
@@ -81,16 +88,18 @@ export default function App() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [d, e, t, l, en, r, c] = await Promise.all([
+      const [d, e, ret, t, l, en, r, c, p] = await Promise.all([
         api<DashboardData>('dashboard:get'),
         api<Empresa[]>('empresas:list'),
+        api<RetiroEmpresa[]>('retiros:list'),
         api<Trabajadora[]>('trabajadoras:list'),
         api<Lote[]>('lotes:list'),
         api<Entrega[]>('entregas:list'),
         api<Recepcion[]>('recepciones:list'),
-        api<Configuracion>('config:get')
+        api<Configuracion>('config:get'),
+        api<PrecioCategoria[]>('precios:list')
       ]);
-      setDashboard(d); setEmpresas(e); setTrabajadoras(t); setLotes(l); setEntregas(en); setRecepciones(r); setConfig(c);
+      setDashboard(d); setEmpresas(e); setRetiros(ret); setTrabajadoras(t); setLotes(l); setEntregas(en); setRecepciones(r); setConfig(c); setPrecios(p);
       setRendimiento(await api<TrabajadoraResumen[]>('rendimiento:list', {}));
       setHistorial(await api<Array<Record<string, unknown>>>('historial:list'));
       setBackupInfo(await api<Record<string, unknown>>('backups:info'));
@@ -136,6 +145,19 @@ export default function App() {
       setEmpresaForm({ codigo: '', nombre: '', servicio_principal: 'QUEBRADO', precio_servicio: '0' });
       setEditingEmpresa(null);
       showOk('Empresa guardada correctamente.');
+      await loadAll();
+    } catch (error) { showError(error); }
+  }
+
+  async function saveRetiro() {
+    try {
+      await api('retiros:create', {
+        ...retiroForm,
+        peso_bruto_g: kgToGrams(fieldText(retiroForm.peso_bruto)),
+        peso_envases_g: kgToGrams(fieldText(retiroForm.peso_envases))
+      });
+      setRetiroForm({ empresa_id: '', tipo_servicio: 'QUEBRADO', fecha_retiro: today, hora_retiro: timeNow, persona_entrega: '', persona_recoge: '', lugar_retiro: '', transporte: '', peso_bruto: '', peso_envases: '0', cantidad_bolsas: 0, observaciones: '' });
+      showOk('Retiro de empresa registrado correctamente.');
       await loadAll();
     } catch (error) { showError(error); }
   }
@@ -193,6 +215,22 @@ export default function App() {
     } catch (error) { showError(error); }
   }
 
+  async function savePrecio() {
+    if (!editingPrecio) return;
+    try {
+      await api('precios:update', {
+        ...editingPrecio,
+        nombre: precioForm.nombre,
+        precio_centavos: bsToCents(fieldText(precioForm.precio)),
+        activa: Boolean(precioForm.activa)
+      });
+      setEditingPrecio(null);
+      setPrecioForm({ nombre: '', precio: '0', activa: true });
+      showOk('Precio actualizado correctamente.');
+      await loadAll();
+    } catch (error) { showError(error); }
+  }
+
   async function inspectEntrega(id: number) {
     try {
       const detail = await api<Record<string, unknown>>('entregas:detail', { id });
@@ -246,6 +284,21 @@ export default function App() {
           <Input label="Observaciones" value={empresaForm.observaciones} onChange={(v) => setForm(setEmpresaForm, empresaForm, 'observaciones', v)} />
         </div><Actions><button className="primary" onClick={() => void saveEmpresa()}>Guardar empresa</button>{editingEmpresa && <button onClick={() => setEditingEmpresa(null)}>Cancelar edicion</button>}</Actions></Panel>
         <Panel title="Empresas registradas"><Table headers={['Codigo','Nombre','Servicio','Precio','Estado','Acciones']} rows={empresas.map((e) => [e.codigo, e.nombre, e.servicio_principal, fmtBs(e.precio_servicio_centavos), e.activa ? 'Activa' : 'Inactiva', <RowActions key={e.id}><button onClick={() => { setEditingEmpresa(e); setEmpresaForm({ ...e, precio_servicio: centsToBs(e.precio_servicio_centavos).toString() }); }}>Editar</button><button onClick={() => askConfirm('Desactivar esta empresa?', async () => { await api('empresas:deactivate', { id: e.id }); await loadAll(); showOk('Empresa desactivada.'); })}>Desactivar</button></RowActions>])} /></Panel></section>}
+        {view === 'retiros' && <section><Panel title="Registrar retiro desde empresa"><div className="grid form">
+          <Select label="Empresa" value={retiroForm.empresa_id} options={empresas.filter(e => e.activa).map(e => [e.id, `${e.codigo} - ${e.nombre}`])} onChange={(v) => setForm(setRetiroForm, retiroForm, 'empresa_id', v)} />
+          <Select label="Destino del trabajo" value={retiroForm.tipo_servicio} options={['QUEBRADO','RECORTE']} onChange={(v) => setForm(setRetiroForm, retiroForm, 'tipo_servicio', v)} />
+          <Input label="Fecha retiro" type="date" value={retiroForm.fecha_retiro} onChange={(v) => setForm(setRetiroForm, retiroForm, 'fecha_retiro', v)} />
+          <Input label="Hora retiro" type="time" value={retiroForm.hora_retiro} onChange={(v) => setForm(setRetiroForm, retiroForm, 'hora_retiro', v)} />
+          <Input label="Entrega en empresa" value={retiroForm.persona_entrega} onChange={(v) => setForm(setRetiroForm, retiroForm, 'persona_entrega', v)} />
+          <Input label="Recoge por nosotros" value={retiroForm.persona_recoge} onChange={(v) => setForm(setRetiroForm, retiroForm, 'persona_recoge', v)} />
+          <Input label="Lugar de retiro" value={retiroForm.lugar_retiro} onChange={(v) => setForm(setRetiroForm, retiroForm, 'lugar_retiro', v)} />
+          <Input label="Transporte / movilidad" value={retiroForm.transporte} onChange={(v) => setForm(setRetiroForm, retiroForm, 'transporte', v)} />
+          <Input label="Peso bruto kg" value={retiroForm.peso_bruto} onChange={(v) => setForm(setRetiroForm, retiroForm, 'peso_bruto', v)} />
+          <Input label="Peso envases kg" value={retiroForm.peso_envases} onChange={(v) => setForm(setRetiroForm, retiroForm, 'peso_envases', v)} />
+          <Input label="Cantidad de bolsas" value={retiroForm.cantidad_bolsas} onChange={(v) => setForm(setRetiroForm, retiroForm, 'cantidad_bolsas', v)} />
+          <Input label="Observaciones" value={retiroForm.observaciones} onChange={(v) => setForm(setRetiroForm, retiroForm, 'observaciones', v)} />
+        </div><p className="hint">Use este registro para controlar lo que ustedes sacan o recogen de cada empresa antes de quebrar internamente o distribuir para recorte.</p><Actions><button className="primary" onClick={() => void saveRetiro()}>Guardar retiro</button></Actions></Panel>
+        <Panel title="Retiros registrados"><Table headers={['Numero','Empresa','Trabajo','Fecha','Recoge','Neto','Bolsas']} rows={retiros.map((r) => [r.numero, r.empresa_nombre, r.tipo_servicio, `${fmtDate(r.fecha_retiro)} ${r.hora_retiro}`, r.persona_recoge, fmtKg(r.peso_neto_g), r.cantidad_bolsas])} /></Panel></section>}
         {view === 'trabajadoras' && <section><Panel title={editingTrabajadora ? 'Editar trabajadora' : 'Registrar trabajadora'}><div className="grid form">
           <Input label="Nombre completo" value={trabForm.nombre_completo} onChange={(v) => setForm(setTrabForm, trabForm, 'nombre_completo', v)} />
           <Input label="Cedula" value={trabForm.cedula} onChange={(v) => setForm(setTrabForm, trabForm, 'cedula', v)} />
@@ -302,8 +355,9 @@ export default function App() {
           <Input label="Otros kg" value={recepcionForm.otros} onChange={(v) => setForm(setRecepcionForm, recepcionForm, 'otros', v)} />
           <Input label="Responsable recepcion" value={recepcionForm.responsable_recepcion} onChange={(v) => setForm(setRecepcionForm, recepcionForm, 'responsable_recepcion', v)} />
           <Input label="Observaciones" value={recepcionForm.observaciones} onChange={(v) => setForm(setRecepcionForm, recepcionForm, 'observaciones', v)} />
-        </div><div className="checks"><label><input type="checkbox" checked={Boolean(recepcionForm.es_recepcion_final)} onChange={(e) => setForm(setRecepcionForm, recepcionForm, 'es_recepcion_final', e.target.checked)} /> Recepcion final</label><label><input type="checkbox" checked={Boolean(recepcionForm.requiere_reproceso)} onChange={(e) => setForm(setRecepcionForm, recepcionForm, 'requiere_reproceso', e.target.checked)} /> Requiere reproceso</label><label><input type="checkbox" checked={Boolean(recepcionForm.confirmar_exceso)} onChange={(e) => setForm(setRecepcionForm, recepcionForm, 'confirmar_exceso', e.target.checked)} /> Confirmar exceso</label></div>{selectedEntrega && <p className="hint">Pendiente antes de recepcion: {fmtKg(Number(selectedEntrega.pendiente_g))}. Lote {String(selectedEntrega.lote_codigo)} de {String(selectedEntrega.empresa_nombre)}.</p>}<Actions><button className="primary" onClick={() => void saveRecepcion()}>Registrar recepcion</button></Actions></Panel><Panel title="Recepciones"><Table headers={['Numero','Entrega','Fecha','Procesado','Bueno','Final']} rows={recepciones.map((r) => [r.numero, r.entrega_id, fmtDate(r.fecha_recepcion), fmtKg(r.peso_procesado_g), fmtKg(r.producto_bueno_g), r.es_recepcion_final ? 'Si' : 'No'])} /></Panel></section>}
+        </div><div className="checks"><label><input type="checkbox" checked={Boolean(recepcionForm.es_recepcion_final)} onChange={(e) => setForm(setRecepcionForm, recepcionForm, 'es_recepcion_final', e.target.checked)} /> Recepcion final</label><label><input type="checkbox" checked={Boolean(recepcionForm.requiere_reproceso)} onChange={(e) => setForm(setRecepcionForm, recepcionForm, 'requiere_reproceso', e.target.checked)} /> Requiere reproceso</label><label><input type="checkbox" checked={Boolean(recepcionForm.confirmar_exceso)} onChange={(e) => setForm(setRecepcionForm, recepcionForm, 'confirmar_exceso', e.target.checked)} /> Confirmar exceso</label></div>{selectedEntrega && <p className="hint">Pendiente antes de recepcion: {fmtKg(Number(selectedEntrega.pendiente_g))}. En recorte conviene cerrar solamente cuando la persona devolvio todo o justifico la diferencia.</p>}<Actions><button className="primary" onClick={() => void saveRecepcion()}>Registrar recepcion</button></Actions></Panel><Panel title="Recepciones"><Table headers={['Numero','Entrega','Fecha','Procesado','Bueno','Pago','Final']} rows={recepciones.map((r) => [r.numero, r.entrega_id, fmtDate(r.fecha_recepcion), fmtKg(r.peso_procesado_g), fmtKg(r.producto_bueno_g), fmtBs(r.total_pago_centavos), r.es_recepcion_final ? 'Si' : 'No'])} /></Panel></section>}
         {view === 'rendimiento' && <section><Panel title="Rendimiento de trabajadoras"><Table headers={['Nombre','Trabajos','Procesado','Bueno','Rendimiento','Productividad','Atrasadas']} rows={rendimiento.map((r) => [r.trabajadora.nombre_completo, r.entregas_terminadas, fmtKg(r.kg_procesados_g), `${r.rendimiento_ponderado.toFixed(2)}%`, `${r.rendimiento_ponderado.toFixed(2)}%`, `${r.productividad_promedio.toFixed(2)} kg/h`, r.entregas_atrasadas])} /></Panel></section>}
+        {view === 'precios' && <section>{editingPrecio && <Panel title={`Editar precio: ${editingPrecio.tipo_servicio}`}><div className="grid form"><Input label="Categoria" value={precioForm.nombre} onChange={(v) => setForm(setPrecioForm, precioForm, 'nombre', v)} /><Input label="Precio Bs/kg" value={precioForm.precio} onChange={(v) => setForm(setPrecioForm, precioForm, 'precio', v)} /><label><span>Activa</span><select value={Boolean(precioForm.activa) ? '1' : '0'} onChange={(e) => setForm(setPrecioForm, precioForm, 'activa', e.target.value === '1')}><option value="1">Si</option><option value="0">No</option></select></label></div><Actions><button className="primary" onClick={() => void savePrecio()}>Guardar precio</button><button onClick={() => setEditingPrecio(null)}>Cancelar</button></Actions></Panel>}<Panel title="Precios por categoria"><p className="hint">Estos valores controlan cuanto se paga por kg clasificado. Ejemplo: almendra buena 3 Bs/kg, podrida 0,50 Bs/kg. Los cambios aplican a recepciones nuevas.</p><Table headers={['Trabajo','Categoria','Precio','Estado','Acciones']} rows={precios.map((p) => [p.tipo_servicio, p.nombre, fmtBs(p.precio_centavos), p.activa ? 'Activa' : 'Inactiva', <button key={p.id} onClick={() => { setEditingPrecio(p); setPrecioForm({ nombre: p.nombre, precio: centsToBs(p.precio_centavos).toString(), activa: Boolean(p.activa) }); }}>Editar</button>])} /></Panel></section>}
         {view === 'respaldos' && <section><Panel title="Base de datos y respaldos"><p><strong>Base SQLite:</strong> {String(backupInfo.databasePath || '')}</p><p><strong>Carpeta de respaldos:</strong> {String(backupInfo.backupFolder || '')}</p><Actions><button className="primary" onClick={() => void createBackupNow()}>Crear copia manual</button></Actions></Panel><Panel title="Respaldos existentes"><Table headers={['Archivo','Fecha','Tamano','Acciones']} rows={backups.map((b) => [String(b.nombre), fmtDate(String(b.fecha)), `${(Number(b.tamano) / 1024).toFixed(1)} KB`, <button key={String(b.ruta)} onClick={() => askConfirm('Restaurar este respaldo? Se creara una copia antes de restaurar.', async () => { await api('backups:restore', { path: b.ruta }); await loadAll(); showOk('Respaldo restaurado.'); })}>Restaurar</button>])} /></Panel></section>}
         {view === 'configuracion' && config && <section><Panel title="Configuracion"><div className="grid form"><Input label="Nombre del negocio" value={config.nombre_negocio} onChange={(v) => setConfig({ ...config, nombre_negocio: v })} /><Input label="Responsable" value={config.responsable} onChange={(v) => setConfig({ ...config, responsable: v })} /><Input label="Telefono" value={config.telefono} onChange={(v) => setConfig({ ...config, telefono: v })} /><Input label="Direccion" value={config.direccion} onChange={(v) => setConfig({ ...config, direccion: v })} /><Input label="Tolerancia kg" value={gramsToKg(config.tolerancia_diferencia_g).toString()} onChange={(v) => setConfig({ ...config, tolerancia_diferencia_g: kgToGrams(v || '0') })} /><Input label="Carpeta respaldos" value={config.carpeta_respaldos} onChange={(v) => setConfig({ ...config, carpeta_respaldos: v })} /><Input label="Moneda" value={config.moneda} onChange={(v) => setConfig({ ...config, moneda: v })} /><Input label="Unidad peso" value={config.unidad_peso} onChange={(v) => setConfig({ ...config, unidad_peso: v })} /></div><Actions><button className="primary" onClick={() => void api('config:update', config).then(loadAll).then(() => showOk('Configuracion guardada.')).catch(showError)}>Guardar configuracion</button></Actions></Panel></section>}
         {view === 'historial' && <section><Panel title="Historial del sistema"><Table headers={['Fecha','Modulo','Accion','Descripcion']} rows={historial.map((h) => [fmtDate(String(h.fecha_hora)), String(h.modulo), String(h.accion), String(h.descripcion)])} /></Panel></section>}

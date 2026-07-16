@@ -8,6 +8,10 @@ Abra Trabajadoras, complete nombre, tipo de trabajo, precios por kilogramo y fec
 
 Abra Lotes, seleccione empresa y servicio, registre fecha, personas, peso bruto, peso de envases y bolsas. El peso neto se calcula al guardar. El codigo se genera como `SA-Q-001` o `HB-R-001`.
 
+## Registrar un retiro de empresa
+
+Abra Retiros y registre la empresa, el destino del trabajo, quien entrega, quien recoge, transporte, bolsas y pesos. Use este modulo para controlar lo que se saca de San Agustin o Hermanos Blacut antes de procesarlo.
+
 ## Entregar almendra
 
 Abra Entregas, elija un lote y una trabajadora compatible. Registre peso bruto, envase, plazo y responsable. El sistema valida que no se entregue mas que el saldo disponible.
@@ -23,6 +27,10 @@ Abra Recepciones, seleccione la entrega, registre la clasificacion y marque Rece
 ## Ver porcentajes
 
 Use la ficha de lote o la ficha de trabajadora para revisar rendimiento, producto bueno, descarte, pendientes y productividad calculados desde la base.
+
+## Editar precios por categoria
+
+Abra Precios, elija una categoria y pulse Editar. Cambie el precio Bs/kg, por ejemplo almendra buena 3 Bs/kg o podrida 0,50 Bs/kg. Las recepciones nuevas usaran esos valores para calcular el pago total.
 
 ## Comparar trabajadoras
 
